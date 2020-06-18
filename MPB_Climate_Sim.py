@@ -1,10 +1,11 @@
 import time
+import concurrent.futures
 import numpy as np
 import pandas as pd
 from math import exp
 from SimulationModel.DataImportFunctions import *
 from SimulationModel.HelperFunctions import *
-
+import SimulationModel.Simulation_Equations as eq
 # Path Variables
 PATH = r"C:\Users\djgra\Desktop\Thesis_MPB\MPB_Data\GridExperiments\Leading_EdgeGrid.gdb\Leading_EdgeGrids.xlsx"
 
@@ -12,7 +13,6 @@ PATH = r"C:\Users\djgra\Desktop\Thesis_MPB\MPB_Data\GridExperiments\Leading_Edge
 PATH1 = r"C:\Users\djgra\Jupyter_Notebooks\HintonRelated\LongDistanceDispersal\grid_16green.xls"
 PATH2 = r"C:\Users\djgra\Jupyter_Notebooks\HintonRelated\LongDistanceDispersal\grid_17green.xls"
 PATH3 = r"C:\Users\djgra\Jupyter_Notebooks\HintonRelated\LongDistanceDispersal\grid_17greenPoissonCount.xls"
-
 
 
 
@@ -122,6 +122,7 @@ number_of_samples = 13225
 ######################################################################################################################################################
 ### Simulation Equations  ############################################################################################################################
 ######################################################################################################################################################
+
 def susceptible_rule(t, i, j):
     S[t + 1, i, j] = S[t, i, j] - G_NewGrowth[t, i, j]
     # Enforce Non-Negativity
@@ -139,14 +140,10 @@ def incell_weight_rule(t, i, j):
 def post_dispersal_rule(t, i, j, local_dict):
     # Compute the first half of Equation 4: G_PostDispersal[t+1,i,j] = G_PostTreatment[t,i,j] - G_PostTreatment[t,i,j]*emmigration_weight_sum
 
-    # Get all of the solns needed for Eq.3
-    # emmigration_values = indexedsolutions_Eq3(t+1,dim,neighbour_dict).get((t+1,i,j))
-
     # local_dict = {(t+1,b,c):neighbour_summation(t+1,b,c,dim,neighbour_dict) for b in Iset for c in Jset }
     emmigration_values = local_dict.get((t + 1, i, j))
 
     # Eq. 3 == emmigration_weights
-    # emmigration_weights = [element*incell_weight[t+1,i,j] for element in emmigration_values]
     emmigration_weights = [element * (1 - incell_weight[t + 1, i, j]) for element in emmigration_values]
 
     # Emmigration summation of Eq.4
@@ -194,12 +191,11 @@ def objective_function(t, i, j):
 def simulation(RCP_data):
     Time_Out = 10
     simulation_count = 0
-    simulation_cieling = 10
+    simulation_cieling = 5
     simulation_solutions = []
-
     RCP_array = np.array(RCP_data)
-    while simulation_count < simulation_cieling:
 
+    while simulation_count < simulation_cieling:
         # Set t=0 Values:
         S[0], G_NewGrowth[0], G_PostTreatment[0] = np.array(Susceptible_Initial), np.array(PostTreatment_Initial), G_NewGrowth[0].copy()
 
@@ -238,7 +234,7 @@ def simulation(RCP_data):
                 for i in Iset:
                     for j in Jset:
                         g_newgrowth_rule(t, i, j, RCP_array)
-                        
+
                         # No Need to implement detection probability for L = 0
                         # if Detection[i,j] == 1:
                         g_posttreatment_rule(t, i, j)
@@ -248,15 +244,44 @@ def simulation(RCP_data):
         simulation_count += 1
 
     average_obj_value = np.array(simulation_solutions).sum() / len(simulation_solutions)
-
     return average_obj_value
 
 
 solutions1 = {'2020-2030':0, '2050-2060':0, '2080-2090':0}
-t0 = time.time()
-solutions1['2020-2030'] = simulation(R_data1_2030)
-solutions1['2050-2060'] = simulation(R_data1_5060)
-solutions1['2080-2090'] = simulation(R_data1_8090)
-t1 = time.time()
-print("")
-print(t1-t0)
+solutions2 = {'2020-2030':0, '2050-2060':0, '2080-2090':0}
+solutions3 = {'2020-2030':0, '2050-2060':0, '2080-2090':0}
+
+
+
+if __name__ == '__main__':
+    t0 = time.time()
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        x1 = executor.submit(simulation, R_data1_2030)
+        x2 = executor.submit(simulation, R_data1_5060)
+        x3 = executor.submit(simulation, R_data1_8090)
+        y1 = executor.submit(simulation, R_data2_2030)
+        y2 = executor.submit(simulation, R_data2_5060)
+        y3 = executor.submit(simulation, R_data2_8090)
+        z1 = executor.submit(simulation, R_data3_2030)
+        z2 = executor.submit(simulation, R_data3_5060)
+        z3 = executor.submit(simulation, R_data3_8090)
+        solutions1['2020-2030'] = x1.result()
+        solutions1['2050-2060'] = x2.result()
+        solutions1['2080-2090'] = x3.result()
+        solutions2['2020-2030'] = y1.result()
+        solutions2['2050-2060'] = y2.result()
+        solutions2['2080-2090'] = y3.result()
+        solutions3['2020-2030'] = z1.result()
+        solutions3['2050-2060'] = z2.result()
+        solutions3['2080-2090'] = z3.result()
+
+        print(solutions1)
+        print(solutions2)
+        print(solutions3)
+
+        t1 = time.time()
+        print(t1 - t0)
+
+
+
+
